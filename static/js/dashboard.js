@@ -132,6 +132,8 @@ function connectWS() {
         addLog('Bosh tushmoqda: ' + (STATE_LABELS[d.state] || d.state), 'alert');
       else if (d.state === 'no_face')
         addLog('Yuz topilmadi', 'warn');
+      else if (d.state === 'error')
+        addLog('Server xatosi: ' + (d.message || ''), 'alert');
       prevState = d.state;
     }
   };
