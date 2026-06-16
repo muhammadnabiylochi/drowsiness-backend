@@ -1,0 +1,26 @@
+System check identified no issues (0 silenced).
+April 07, 2026 - 16:48:07
+Django version 6.0.3, using settings 'drowsiness_project.settings'
+Starting ASGI/Daphne version 4.2.1 development server at http://0.0.0.0:8000/
+Quit the server with CTRL-BREAK.
+2026-04-07 16:48:07,641 [INFO] daphne.server: HTTP/2 support not enabled (install the http2 and tls Twisted extras)
+2026-04-07 16:48:07,642 [INFO] daphne.server: Configuring endpoint tcp:port=8000:interface=0.0.0.0
+2026-04-07 16:48:07,642 [INFO] daphne.server: Listening on TCP address 0.0.0.0:8000
+2026-04-07 16:48:09,619 [INFO] core.detector: Detector initialized: EAR_T=0.22, MAR_T=0.55, DROWSY_FRAMES=15
+2026-04-07 16:48:09,619 [INFO] core.alert: AlertManager initialized: log=logs\drowsiness_events.log, cooldown=5.0s
+2026-04-07 16:48:10,230 [INFO] core.face_mesh: ONNX face mesh initialized (DirectML (GPU))
+2026-04-07 16:48:10,230 [INFO] detection.engine: Engine initialized (backend=gpu (DirectML (GPU)))
+2026-04-07 16:48:10,231 [INFO] core.camera: Opening camera: 0
+2026-04-07 16:48:13,671 [INFO] core.camera: Camera opened: 640x480 @ 30.0fps
+2026-04-07 16:48:13,680 [INFO] detection.engine: Detection engine started
+2026-04-07 16:48:14,281 [INFO] core.detector: State: no_face -> falling_back (conf=1.00)
+2026-04-07 16:48:14,281 [WARNING] core.alert: ALERT #1: falling_back (EAR=0.290, MAR=0.012)
+2026-04-07 16:48:15,861 [INFO] core.detector: Calibration complete: baseline_EAR=0.281, suggested_threshold=0.211
+2026-04-07 16:48:19,319 [WARNING] core.alert: ALERT #2: falling_back (EAR=0.223, MAR=0.009)
+2026-04-07 16:48:24,348 [WARNING] core.alert: ALERT #3: falling_back (EAR=0.428, MAR=0.008)
+2026-04-07 16:48:29,384 [WARNING] core.alert: ALERT #4: falling_back (EAR=0.211, MAR=0.020)
+2026-04-07 16:48:34,408 [WARNING] core.alert: ALERT #5: falling_back (EAR=0.190, MAR=0.017)
+2026-04-07 16:48:39,448 [WARNING] core.alert: ALERT #6: falling_back (EAR=0.171, MAR=0.026)
+2026-04-07 16:48:44,474 [WARNING] core.alert: ALERT #7: falling_back (EAR=0.146, MAR=0.020)
+2026-04-07 16:48:49,490 [WARNING] core.alert: ALERT #8: falling_back (EAR=0.204, MAR=0.026)
+2026-04-07 16:48:54,507 [WARNING] core.alert: ALERT #9: falling_back (EAR=0.312, MAR=0.025)

@@ -1,0 +1,28 @@
+# Drowsiness Detection Backend - Requirements
+# Based on: Safarov et al. (2023) "Real-Time Deep Learning-Based Drowsiness Detection"
+# Sensors 2023, 23, 6459. https://doi.org/10.3390/s23146459
+
+# Core CV / ML
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Django web framework
+Django>=5.0
+daphne>=4.0
+channels>=4.0
+
+# Alerting
+playsound==1.2.2; platform_system != "Linux"
+pydub>=0.25.1
+
+# Utils
+pydantic>=2.0
+pydantic-settings>=2.0
+python-dotenv>=1.0.0
+
+# Static files for production
+whitenoise>=6.0
+
+# Optional: GPU acceleration (ONNX Runtime DirectML)
+# onnxruntime-directml>=1.16.0

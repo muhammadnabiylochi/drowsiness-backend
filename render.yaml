@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: drowsiness-backend
+    runtime: docker
+    plan: free
+    envVars:
+      - key: DJANGO_NO_AUTOSTART
+        value: "true"
+      - key: DJANGO_DEBUG
+        value: "false"
+      - key: DJANGO_SECRET_KEY
+        generateValue: true
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ".onrender.com"

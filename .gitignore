@@ -1,0 +1,11 @@
+﻿venv/
+venv312/
+__pycache__/
+*.pyc
+*.pyo
+db.sqlite3
+logs/*.log
+staticfiles/
+.env
+*.egg-info/
+.DS_Store
