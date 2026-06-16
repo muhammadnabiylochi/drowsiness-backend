@@ -19,6 +19,65 @@ let facingMode = 'user';
 let stream = null;
 let frameCount = 0;
 let fpsTimer = Date.now();
+let alertCooldown = false;
+let audioCtx = null;
+
+// ═══ Audio alert ═══
+
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playBeep(freq = 880, duration = 0.3) {
+  try {
+    const ctx = getAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = freq;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.8, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + duration);
+  } catch(e) {}
+}
+
+function speak(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = 'uz-UZ';
+  u.rate = 1.1;
+  u.volume = 1;
+  // fallback to Russian if Uzbek voice not found
+  const voices = window.speechSynthesis.getVoices();
+  const uzVoice = voices.find(v => v.lang.startsWith('uz'));
+  const ruVoice = voices.find(v => v.lang.startsWith('ru'));
+  if (uzVoice) u.voice = uzVoice;
+  else if (ruVoice) { u.voice = ruVoice; u.lang = 'ru-RU'; }
+  window.speechSynthesis.speak(u);
+}
+
+function triggerAlert(state) {
+  if (alertCooldown) return;
+  alertCooldown = true;
+  setTimeout(() => { alertCooldown = false; }, 8000);
+
+  // Beep + ovozli ogohlantirish
+  playBeep(880, 0.2);
+  setTimeout(() => playBeep(660, 0.2), 250);
+  setTimeout(() => {
+    if (state === 'drowsy' || state === 'drowsy_yawning')
+      speak("Diqqat! Uxlama! Ko'zingni och!");
+    else if (state === 'yawning')
+      speak("Diqqat! Esnamoqdasiz!");
+    else if (state.startsWith('falling_'))
+      speak("Diqqat! Boshingiz tushmoqda!");
+  }, 500);
+}
 
 // ═══ Camera ═══
 
@@ -122,18 +181,22 @@ function connectWS() {
     }
 
     if (d.state !== prevState) {
-      if (d.state === 'drowsy' || d.state === 'drowsy_yawning')
+      if (d.state === 'drowsy' || d.state === 'drowsy_yawning') {
         addLog('⚠ UYQU aniqlandi!', 'alert');
-      else if (d.state === 'yawning')
+        triggerAlert(d.state);
+      } else if (d.state === 'yawning') {
         addLog('Esnash aniqlandi', 'warn');
-      else if (d.state === 'awake' && prevState)
-        addLog('Haydovchi hushyor', 'info');
-      else if (d.state?.startsWith('falling_'))
+        triggerAlert(d.state);
+      } else if (d.state?.startsWith('falling_')) {
         addLog('Bosh tushmoqda: ' + (STATE_LABELS[d.state] || d.state), 'alert');
-      else if (d.state === 'no_face')
+        triggerAlert(d.state);
+      } else if (d.state === 'awake' && prevState) {
+        addLog('Haydovchi hushyor', 'info');
+      } else if (d.state === 'no_face') {
         addLog('Yuz topilmadi', 'warn');
-      else if (d.state === 'error')
+      } else if (d.state === 'error') {
         addLog('Server xatosi: ' + (d.message || ''), 'alert');
+      }
       prevState = d.state;
     }
   };
