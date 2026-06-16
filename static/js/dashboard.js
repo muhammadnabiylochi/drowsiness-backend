@@ -45,19 +45,37 @@ function playBeep(freq = 880, duration = 0.3) {
   } catch(e) {}
 }
 
-function speak(text) {
+const ALERT_TEXTS = {
+  uz: {
+    drowsy:   "Diqqat! Uxlama! Ko'zingni och!",
+    yawning:  "Diqqat! Esnamoqdasiz!",
+    falling:  "Diqqat! Boshingiz tushmoqda!",
+  },
+  ru: {
+    drowsy:   "Внимание! Не спи! Открой глаза!",
+    yawning:  "Внимание! Вы зеваете!",
+    falling:  "Внимание! Голова падает!",
+  },
+};
+
+function getBestVoice() {
+  const voices = window.speechSynthesis.getVoices();
+  const uz = voices.find(v => v.lang.startsWith('uz'));
+  if (uz) return { voice: uz, lang: 'uz-UZ', texts: ALERT_TEXTS.uz };
+  const ru = voices.find(v => v.lang.startsWith('ru'));
+  if (ru) return { voice: ru, lang: 'ru-RU', texts: ALERT_TEXTS.ru };
+  // Ovoz topilmasa ingliz bilan uzbekcha matn
+  return { voice: null, lang: 'ru-RU', texts: ALERT_TEXTS.ru };
+}
+
+function speak(text, lang, voice) {
   if (!window.speechSynthesis) return;
   window.speechSynthesis.cancel();
   const u = new SpeechSynthesisUtterance(text);
-  u.lang = 'uz-UZ';
-  u.rate = 1.1;
+  u.lang = lang;
+  u.rate = 1.0;
   u.volume = 1;
-  // fallback to Russian if Uzbek voice not found
-  const voices = window.speechSynthesis.getVoices();
-  const uzVoice = voices.find(v => v.lang.startsWith('uz'));
-  const ruVoice = voices.find(v => v.lang.startsWith('ru'));
-  if (uzVoice) u.voice = uzVoice;
-  else if (ruVoice) { u.voice = ruVoice; u.lang = 'ru-RU'; }
+  if (voice) u.voice = voice;
   window.speechSynthesis.speak(u);
 }
 
@@ -66,16 +84,15 @@ function triggerAlert(state) {
   alertCooldown = true;
   setTimeout(() => { alertCooldown = false; }, 8000);
 
-  // Beep + ovozli ogohlantirish
   playBeep(880, 0.2);
   setTimeout(() => playBeep(660, 0.2), 250);
   setTimeout(() => {
-    if (state === 'drowsy' || state === 'drowsy_yawning')
-      speak("Diqqat! Uxlama! Ko'zingni och!");
-    else if (state === 'yawning')
-      speak("Diqqat! Esnamoqdasiz!");
-    else if (state.startsWith('falling_'))
-      speak("Diqqat! Boshingiz tushmoqda!");
+    const { voice, lang, texts } = getBestVoice();
+    let text;
+    if (state === 'drowsy' || state === 'drowsy_yawning') text = texts.drowsy;
+    else if (state === 'yawning') text = texts.yawning;
+    else text = texts.falling;
+    speak(text, lang, voice);
   }, 500);
 }
 
