@@ -321,39 +321,46 @@ class FaceMesh:
         self._mode = "none"
         self._frame_ts = 0
 
-        # --- 1. Try MediaPipe Tasks API VIDEO mode ---
-        if self._try_tasks_api(max_num_faces, min_detection_confidence, min_tracking_confidence):
+        errors = []
+
+        # --- 1. Try Tasks API VIDEO mode ---
+        ok, err = self._try_tasks_api(max_num_faces, min_detection_confidence, min_tracking_confidence)
+        if ok:
             return
+        errors.append(f"VIDEO: {err}")
 
-        # --- 2. Fallback: Tasks API IMAGE mode (simpler, no timestamp tracking) ---
-        if self._try_tasks_api_image(max_num_faces, min_detection_confidence, min_tracking_confidence):
+        # --- 2. Try Tasks API IMAGE mode ---
+        ok, err = self._try_tasks_api_image(max_num_faces, min_detection_confidence, min_tracking_confidence)
+        if ok:
             return
+        errors.append(f"IMAGE: {err}")
 
-        raise RuntimeError(
-            "MediaPipe face mesh initialization failed. "
-            "Check logs for details. mediapipe.solutions API is not available in 0.10.x."
-        )
+        # --- 3. Try re-download model and IMAGE mode ---
+        logger.warning("Trying fresh model download...")
+        try:
+            TASK_PATH.unlink(missing_ok=True)
+            urllib.request.urlretrieve(MODEL_URL, TASK_PATH)
+            ok, err = self._try_tasks_api_image(max_num_faces, min_detection_confidence, min_tracking_confidence)
+            if ok:
+                return
+            errors.append(f"IMAGE(redownload): {err}")
+        except Exception as e:
+            errors.append(f"redownload: {e}")
 
-    def _try_tasks_api(self, max_faces, det_conf, track_conf) -> bool:
+        raise RuntimeError("FaceMesh init failed: " + " | ".join(errors))
+
+    def _try_tasks_api(self, max_faces, det_conf, track_conf):
         try:
             import mediapipe as mp
             from mediapipe.tasks.python import BaseOptions
-            from mediapipe.tasks.python.vision import (
-                FaceLandmarker,
-                FaceLandmarkerOptions,
-                RunningMode,
-            )
+            from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
 
             if not TASK_PATH.exists():
                 MODEL_DIR.mkdir(parents=True, exist_ok=True)
-                logger.info("Downloading face_landmarker model...")
                 urllib.request.urlretrieve(MODEL_URL, TASK_PATH)
 
             options = FaceLandmarkerOptions(
-                base_options=BaseOptions(
-                    model_asset_path=str(TASK_PATH),
-                    delegate=BaseOptions.Delegate.CPU,
-                ),
+                base_options=BaseOptions(model_asset_path=str(TASK_PATH), delegate=BaseOptions.Delegate.CPU),
                 running_mode=RunningMode.VIDEO,
                 num_faces=max_faces,
                 min_face_detection_confidence=det_conf,
@@ -363,32 +370,24 @@ class FaceMesh:
             self._mp_landmarker = FaceLandmarker.create_from_options(options)
             self._mode = "tasks"
             self.backend = "cpu (tasks)"
-            logger.info("Face Mesh: Tasks API VIDEO mode (CPU)")
-            return True
+            logger.info("Face Mesh: Tasks API VIDEO mode OK")
+            return True, None
         except Exception as e:
-            logger.warning(f"Tasks API VIDEO mode failed: {e}")
-            return False
+            logger.warning(f"Tasks API VIDEO failed: {e}")
+            return False, str(e)
 
-    def _try_tasks_api_image(self, max_faces, det_conf, track_conf) -> bool:
+    def _try_tasks_api_image(self, max_faces, det_conf, track_conf):
         try:
             import mediapipe as mp
             from mediapipe.tasks.python import BaseOptions
-            from mediapipe.tasks.python.vision import (
-                FaceLandmarker,
-                FaceLandmarkerOptions,
-                RunningMode,
-            )
+            from mediapipe.tasks.python.vision import FaceLandmarker, FaceLandmarkerOptions, RunningMode
 
             if not TASK_PATH.exists():
                 MODEL_DIR.mkdir(parents=True, exist_ok=True)
-                logger.info("Downloading face_landmarker model...")
                 urllib.request.urlretrieve(MODEL_URL, TASK_PATH)
 
             options = FaceLandmarkerOptions(
-                base_options=BaseOptions(
-                    model_asset_path=str(TASK_PATH),
-                    delegate=BaseOptions.Delegate.CPU,
-                ),
+                base_options=BaseOptions(model_asset_path=str(TASK_PATH), delegate=BaseOptions.Delegate.CPU),
                 running_mode=RunningMode.IMAGE,
                 num_faces=max_faces,
                 min_face_detection_confidence=det_conf,
@@ -398,11 +397,11 @@ class FaceMesh:
             self._mp_landmarker = FaceLandmarker.create_from_options(options)
             self._mode = "tasks_image"
             self.backend = "cpu (tasks/image)"
-            logger.info("Face Mesh: Tasks API IMAGE mode (CPU)")
-            return True
+            logger.info("Face Mesh: Tasks API IMAGE mode OK")
+            return True, None
         except Exception as e:
-            logger.warning(f"Tasks API IMAGE mode failed: {e}")
-            return False
+            logger.warning(f"Tasks API IMAGE failed: {e}")
+            return False, str(e)
 
     # ── Processing ─────────────────────────────────────────────────
 
