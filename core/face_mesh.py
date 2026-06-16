@@ -321,22 +321,18 @@ class FaceMesh:
         self._mode = "none"
         self._frame_ts = 0
 
-        # --- 1. Try MediaPipe Tasks API (reliable, default) ---
+        # --- 1. Try MediaPipe Tasks API VIDEO mode ---
         if self._try_tasks_api(max_num_faces, min_detection_confidence, min_tracking_confidence):
             return
 
-        # --- 3. Fallback: legacy Solutions API ---
-        import mediapipe as mp
-        mp_face_mesh = mp.solutions.face_mesh
-        self._legacy_mesh = mp_face_mesh.FaceMesh(
-            max_num_faces=max_num_faces,
-            refine_landmarks=True,
-            min_detection_confidence=min_detection_confidence,
-            min_tracking_confidence=min_tracking_confidence,
+        # --- 2. Fallback: Tasks API IMAGE mode (simpler, no timestamp tracking) ---
+        if self._try_tasks_api_image(max_num_faces, min_detection_confidence, min_tracking_confidence):
+            return
+
+        raise RuntimeError(
+            "MediaPipe face mesh initialization failed. "
+            "Check logs for details. mediapipe.solutions API is not available in 0.10.x."
         )
-        self._mode = "legacy"
-        self.backend = "cpu (legacy)"
-        logger.info("Face Mesh: Solutions API (CPU)")
 
     def _try_tasks_api(self, max_faces, det_conf, track_conf) -> bool:
         try:
@@ -350,6 +346,7 @@ class FaceMesh:
 
             if not TASK_PATH.exists():
                 MODEL_DIR.mkdir(parents=True, exist_ok=True)
+                logger.info("Downloading face_landmarker model...")
                 urllib.request.urlretrieve(MODEL_URL, TASK_PATH)
 
             options = FaceLandmarkerOptions(
@@ -366,10 +363,45 @@ class FaceMesh:
             self._mp_landmarker = FaceLandmarker.create_from_options(options)
             self._mode = "tasks"
             self.backend = "cpu (tasks)"
-            logger.info("Face Mesh: Tasks API (CPU)")
+            logger.info("Face Mesh: Tasks API VIDEO mode (CPU)")
             return True
         except Exception as e:
-            logger.warning(f"Tasks API failed: {e}")
+            logger.warning(f"Tasks API VIDEO mode failed: {e}")
+            return False
+
+    def _try_tasks_api_image(self, max_faces, det_conf, track_conf) -> bool:
+        try:
+            import mediapipe as mp
+            from mediapipe.tasks.python import BaseOptions
+            from mediapipe.tasks.python.vision import (
+                FaceLandmarker,
+                FaceLandmarkerOptions,
+                RunningMode,
+            )
+
+            if not TASK_PATH.exists():
+                MODEL_DIR.mkdir(parents=True, exist_ok=True)
+                logger.info("Downloading face_landmarker model...")
+                urllib.request.urlretrieve(MODEL_URL, TASK_PATH)
+
+            options = FaceLandmarkerOptions(
+                base_options=BaseOptions(
+                    model_asset_path=str(TASK_PATH),
+                    delegate=BaseOptions.Delegate.CPU,
+                ),
+                running_mode=RunningMode.IMAGE,
+                num_faces=max_faces,
+                min_face_detection_confidence=det_conf,
+                min_face_presence_confidence=track_conf,
+                min_tracking_confidence=track_conf,
+            )
+            self._mp_landmarker = FaceLandmarker.create_from_options(options)
+            self._mode = "tasks_image"
+            self.backend = "cpu (tasks/image)"
+            logger.info("Face Mesh: Tasks API IMAGE mode (CPU)")
+            return True
+        except Exception as e:
+            logger.warning(f"Tasks API IMAGE mode failed: {e}")
             return False
 
     # ── Processing ─────────────────────────────────────────────────
@@ -378,11 +410,12 @@ class FaceMesh:
         if self._mode == "onnx":
             return self._onnx.process(frame_rgb)
         elif self._mode == "tasks":
-            return self._process_tasks(frame_rgb)
-        else:
-            return self._process_legacy(frame_rgb)
+            return self._process_tasks_video(frame_rgb)
+        elif self._mode == "tasks_image":
+            return self._process_tasks_image(frame_rgb)
+        return FaceMeshResult(landmarks=None, has_face=False)
 
-    def _process_tasks(self, frame_rgb: np.ndarray) -> FaceMeshResult:
+    def _process_tasks_video(self, frame_rgb: np.ndarray) -> FaceMeshResult:
         import mediapipe as mp
         self._frame_ts += 33
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
@@ -391,13 +424,12 @@ class FaceMesh:
             return FaceMeshResult(landmarks=result.face_landmarks[0], has_face=True)
         return FaceMeshResult(landmarks=None, has_face=False)
 
-    def _process_legacy(self, frame_rgb: np.ndarray) -> FaceMeshResult:
-        results = self._legacy_mesh.process(frame_rgb)
-        if results.multi_face_landmarks:
-            return FaceMeshResult(
-                landmarks=results.multi_face_landmarks[0].landmark,
-                has_face=True,
-            )
+    def _process_tasks_image(self, frame_rgb: np.ndarray) -> FaceMeshResult:
+        import mediapipe as mp
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=frame_rgb)
+        result = self._mp_landmarker.detect(mp_image)
+        if result.face_landmarks:
+            return FaceMeshResult(landmarks=result.face_landmarks[0], has_face=True)
         return FaceMeshResult(landmarks=None, has_face=False)
 
     def close(self):
