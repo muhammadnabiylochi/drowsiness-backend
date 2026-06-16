@@ -47,14 +47,22 @@ function playBeep(freq = 880, duration = 0.3) {
 
 const ALERT_TEXTS = {
   uz: {
-    drowsy:   "Diqqat! Uxlama! Ko'zingni och!",
-    yawning:  "Diqqat! Esnamoqdasiz!",
-    falling:  "Diqqat! Boshingiz tushmoqda!",
+    drowsy:          "Diqqat! Uxlama! Ko'zingni och!",
+    drowsy_yawning:  "Diqqat! Uxlayapsiz va esnamoqdasiz!",
+    yawning:         "Diqqat! Esnamoqdasiz, dam oling!",
+    falling_back:    "Diqqat! Boshingiz orqaga tushmoqda!",
+    falling_forward: "Diqqat! Boshingiz oldinga tushmoqda!",
+    falling_left:    "Diqqat! Boshingiz chapga tushmoqda!",
+    falling_right:   "Diqqat! Boshingiz o'ngga tushmoqda!",
   },
   ru: {
-    drowsy:   "Внимание! Не спи! Открой глаза!",
-    yawning:  "Внимание! Вы зеваете!",
-    falling:  "Внимание! Голова падает!",
+    drowsy:          "Внимание! Не спи! Открой глаза!",
+    drowsy_yawning:  "Внимание! Вы засыпаете и зеваете!",
+    yawning:         "Внимание! Вы зеваете, сделайте перерыв!",
+    falling_back:    "Внимание! Голова падает назад!",
+    falling_forward: "Внимание! Голова падает вперёд!",
+    falling_left:    "Внимание! Голова падает влево!",
+    falling_right:   "Внимание! Голова падает вправо!",
   },
 };
 
@@ -88,10 +96,7 @@ function triggerAlert(state) {
   setTimeout(() => playBeep(660, 0.2), 250);
   setTimeout(() => {
     const { voice, lang, texts } = getBestVoice();
-    let text;
-    if (state === 'drowsy' || state === 'drowsy_yawning') text = texts.drowsy;
-    else if (state === 'yawning') text = texts.yawning;
-    else text = texts.falling;
+    const text = texts[state] || texts[Object.keys(texts).find(k => state.startsWith(k))] || texts.drowsy;
     speak(text, lang, voice);
   }, 500);
 }
