@@ -22,51 +22,94 @@ let fpsTimer = Date.now();
 
 // ═══ Camera ═══
 
-async function startCamera() {
+window.startCamera = async function () {
+  // Check if browser supports camera
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showStatus('Bu brauzer kamerani qollab-quvvatlamaydi', 'danger');
+    addLog('getUserMedia qollab-quvvatlanmaydi', 'alert');
+    return;
+  }
+
+  showStatus('Kamera ruxsati so\'ralmoqda...', 'info');
+
   try {
-    if (stream) {
-      stream.getTracks().forEach(t => t.stop());
-    }
+    if (stream) stream.getTracks().forEach(t => t.stop());
+
     stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode, width: { ideal: 320 }, height: { ideal: 240 } },
       audio: false,
     });
-    $('localVideo').srcObject = stream;
+
+    const video = $('localVideo');
+    video.srcObject = stream;
+    await video.play().catch(() => {});
+
     $('startBtn').style.display = 'none';
-    $('flipBtn').style.display = '';
+    $('flipBtn').style.display = 'inline-flex';
     $('liveBadge').style.display = '';
-    addLog('Kamera yoqildi', 'info');
+    showStatus('Kamera yoqildi. Server bilan ulanmoqda...', 'success');
+    addLog('Kamera yoqildi (' + facingMode + ')', 'info');
     connectWS();
   } catch (e) {
-    addLog('Kamera xatosi: ' + e.message, 'alert');
+    const msg = e.name === 'NotAllowedError'
+      ? 'Kamera ruxsati rad etildi. Brauzer sozlamalaridan ruxsat bering.'
+      : e.name === 'NotFoundError'
+      ? 'Kamera topilmadi.'
+      : 'Kamera xatosi: ' + e.message;
+    showStatus(msg, 'danger');
+    addLog(msg, 'alert');
   }
-}
+};
 
-function flipCamera() {
+window.flipCamera = function () {
   facingMode = facingMode === 'user' ? 'environment' : 'user';
-  startCamera();
+  window.startCamera();
+};
+
+function showStatus(msg, type) {
+  let el = $('statusMsg');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'statusMsg';
+    el.className = 'mt-2 small';
+    $('startBtn').parentNode.appendChild(el);
+  }
+  const colors = { info: 'text-cyan', success: 'text-green', danger: 'text-danger', warn: 'text-warning' };
+  el.className = 'mt-2 small ' + (colors[type] || 'text-secondary');
+  el.textContent = msg;
 }
 
 // ═══ WebSocket ═══
 
 function connectWS() {
-  if (ws) ws.close();
+  if (ws) { try { ws.close(); } catch(e) {} }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${proto}//${location.host}/ws/stream`);
+  const url = `${proto}//${location.host}/ws/stream`;
+  addLog('WS ulanmoqda: ' + url, 'info');
+
+  try {
+    ws = new WebSocket(url);
+  } catch(e) {
+    addLog('WS yaratishda xato: ' + e.message, 'alert');
+    return;
+  }
 
   ws.onopen = () => {
     $('wsDot').className = 'live-dot on';
     $('wsLabel').textContent = 'Ulandi';
+    showStatus('Ulandi! Kamera tahlil qilinmoqda...', 'success');
     addLog('Server bilan ulandi', 'info');
     startFrameLoop();
   };
 
   ws.onmessage = e => {
-    const d = JSON.parse(e.data);
+    let d;
+    try { d = JSON.parse(e.data); } catch { return; }
+
     applyState(d.state);
-    if ($('vC')) $('vC').textContent = d.confidence?.toFixed(2) ?? '--';
-    if ($('vEar')) $('vEar').textContent = d.ear_avg?.toFixed(3) ?? '--';
-    if ($('vMar')) $('vMar').textContent = d.mar?.toFixed(3) ?? '--';
+    if ($('vC')) $('vC').textContent = d.confidence != null ? d.confidence.toFixed(2) : '--';
+    if ($('vEar')) $('vEar').textContent = d.ear_avg != null ? d.ear_avg.toFixed(3) : '--';
+    if ($('vMar')) $('vMar').textContent = d.mar != null ? d.mar.toFixed(3) : '--';
     if ($('vBlink')) $('vBlink').textContent = d.total_blinks ?? '--';
     if ($('vPerclos')) $('vPerclos').textContent = d.perclos != null ? (d.perclos * 100).toFixed(1) + '%' : '--';
 
@@ -80,32 +123,37 @@ function connectWS() {
 
     if (d.state !== prevState) {
       if (d.state === 'drowsy' || d.state === 'drowsy_yawning')
-        addLog('UYQU aniqlandi!', 'alert');
+        addLog('⚠ UYQU aniqlandi!', 'alert');
       else if (d.state === 'yawning')
         addLog('Esnash aniqlandi', 'warn');
       else if (d.state === 'awake' && prevState)
         addLog('Haydovchi hushyor', 'info');
       else if (d.state?.startsWith('falling_'))
         addLog('Bosh tushmoqda: ' + (STATE_LABELS[d.state] || d.state), 'alert');
+      else if (d.state === 'no_face')
+        addLog('Yuz topilmadi', 'warn');
       prevState = d.state;
     }
   };
 
-  ws.onclose = () => {
+  ws.onclose = (ev) => {
     $('wsDot').className = 'live-dot off';
     $('wsLabel').textContent = 'Uzildi';
     stopFrameLoop();
-    if (stream) setTimeout(connectWS, 2000);
+    addLog('WS uzildi (kod: ' + ev.code + '). Qayta ulanmoqda...', 'warn');
+    if (stream) setTimeout(connectWS, 3000);
   };
 
-  ws.onerror = () => ws.close();
+  ws.onerror = () => {
+    addLog('WS xatosi yuz berdi', 'alert');
+  };
 }
 
-// ═══ Frame capture loop ═══
+// ═══ Frame capture ═══
 
 function startFrameLoop() {
   stopFrameLoop();
-  frameInterval = setInterval(sendFrame, 100); // 10 fps
+  frameInterval = setInterval(sendFrame, 100);
 }
 
 function stopFrameLoop() {
@@ -115,14 +163,20 @@ function stopFrameLoop() {
 function sendFrame() {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   const video = $('localVideo');
-  if (!video.videoWidth) return;
+  if (!video || !video.videoWidth || video.paused || video.ended) return;
+
   const canvas = $('captureCanvas');
-  canvas.width = 320;
-  canvas.height = Math.round(320 * video.videoHeight / video.videoWidth);
+  const w = 320;
+  const h = Math.round(w * video.videoHeight / video.videoWidth) || 240;
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, 0, 0, w, h);
   const b64 = canvas.toDataURL('image/jpeg', 0.7);
-  ws.send(JSON.stringify({ type: 'frame', data: b64 }));
+  try {
+    ws.send(JSON.stringify({ type: 'frame', data: b64 }));
+  } catch(e) {}
 }
 
 // ═══ State UI ═══
@@ -131,9 +185,10 @@ function applyState(state) {
   const text = $('stateText');
   const card = $('stateCard');
   const icon = $('stateIcon');
+  if (!text) return;
   text.className = 'state-badge ';
   card.style.borderTop = '';
-  const label = STATE_LABELS[state] || (state || 'NOMA\'LUM').toUpperCase().replace(/_/g, ' ');
+  const label = STATE_LABELS[state] || (state || "NOMA'LUM").toUpperCase().replace(/_/g, ' ');
   if (state === 'drowsy' || state === 'drowsy_yawning') {
     text.classList.add('state-drowsy');
     card.style.borderTop = '3px solid #d63939';
@@ -156,11 +211,13 @@ function applyState(state) {
 // ═══ Log ═══
 
 function addLog(msg, type) {
+  const box = $('log');
+  if (!box) return;
   const d = document.createElement('div');
   const t = new Date().toLocaleTimeString('uz-UZ', { hour12: false });
   const cls = type === 'alert' ? 'text-danger' : type === 'warn' ? 'text-warning' : 'text-cyan';
   d.innerHTML = `<span class="${cls}">[${t}]</span> <span class="text-secondary">${msg}</span>`;
-  $('log').appendChild(d);
-  $('log').scrollTop = $('log').scrollHeight;
-  while ($('log').children.length > 100) $('log').removeChild($('log').firstChild);
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  while (box.children.length > 100) box.removeChild(box.firstChild);
 }
